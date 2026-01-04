@@ -4,54 +4,68 @@ import argparse
 import sys
 from pathlib import Path
 
-def convert_playlist(filepath, verbose=False, m4a2flac=False):
+def process_playlist(filepath, verbose=False, m4a2flac=False):
     """
-    Converts .m3u8 playlist to .m3u by removing leading '../' from lines
-    and changing the extension. Removes the original file.
+    Processes playlist files (.m3u8 or .m3u).
+    1. Removes leading '../' from paths.
+    2. Optionally replaces .m4a with .flac.
+    3. For .m3u8: Converts to .m3u and deletes original.
+    4. For .m3u: Updates in-place if changes are needed.
     """
+    is_m3u8 = filepath.suffix.lower() == '.m3u8'
     output_path = filepath.with_suffix('.m3u')
-    
-    # Avoid overwriting if they map to the same file (unlikely given extensions differ)
-    if output_path.resolve() == filepath.resolve():
-        if verbose:
-            print(f"Error: Output path same as input for {filepath}. Skipping.")
-        return False
-
-    if output_path.exists():
-        if verbose:
-            print(f"Warning: Output file {output_path.name} already exists. Overwriting.")
     
     try:
         new_lines = []
+        changes_made = False
+        
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
-                # Remove the beginning string of "../"
+                original_line = line
                 clean_line = line
+                
+                # Remove the beginning string of "../"
                 if clean_line.startswith('../'):
                     clean_line = clean_line[3:]
                 
                 # Replace .m4a with .flac if requested
                 if m4a2flac:
                     clean_line = clean_line.replace('.m4a', '.flac')
+                
+                if clean_line != original_line:
+                    changes_made = True
                     
                 new_lines.append(clean_line)
         
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.writelines(new_lines)
+        # If it's an m3u8 file, we always write (converting format)
+        if is_m3u8:
+            if output_path.exists() and verbose:
+                 print(f"Warning: Output file {output_path.name} already exists. Overwriting.")
             
-        if verbose:
-            print(f"Converted: {filepath.name} -> {output_path.name}")
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
             
-        # Remove the original .m3u8 file
-        os.remove(filepath)
-        return True
+            os.remove(filepath)
+            if verbose:
+                print(f"Converted: {filepath.name} -> {output_path.name}")
+            return True
+            
+        # If it's already an m3u file, only write if we changed something
+        elif changes_made:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+            if verbose:
+                print(f"Updated: {filepath.name}")
+            return True
+            
+        return False
 
     except Exception as e:
         print(f"Error processing {filepath}: {e}", file=sys.stderr)
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description="Recursively find .m3u8 playlists, convert them to .m3u, and remove '../' prefix from paths.")
+    parser = argparse.ArgumentParser(description="Recursively process .m3u8 and .m3u playlists: convert .m3u8 to .m3u, clean '../' paths, and optionally replace extensions.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output")
     parser.add_argument('--m4a2flac', action='store_true', help="Replace '.m4a' with '.flac' in playlist entries")
     parser.add_argument('--dir', type=str, default=str(Path.home() / "Music"), help="Directory to search (default: ~/Music)")
@@ -72,9 +86,10 @@ def main():
     for root, dirs, files in os.walk(search_dir):
         for file in files:
             filepath = Path(root) / file
+            suffix = filepath.suffix.lower()
             
-            if filepath.suffix.lower() == '.m3u8':
-                if convert_playlist(filepath, args.verbose, args.m4a2flac):
+            if suffix in ['.m3u8', '.m3u']:
+                if process_playlist(filepath, args.verbose, args.m4a2flac):
                     count += 1
     
     print(f"Done. Processed {count} files.")
