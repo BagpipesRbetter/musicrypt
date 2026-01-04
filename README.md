@@ -1,6 +1,6 @@
 # musicrypt
 
-A collection of lightweight utility scripts for managing a local music library on Linux.
+A collection of lightweight utility scripts for managing a local music library on Linux and macOS.
 
 ## Scripts
 
@@ -48,6 +48,11 @@ cd ~/.local/scripts
 
 ### 2. Install Dependencies
 Ensure you have Python 3 and FFmpeg installed.
+
+**macOS (via Homebrew):**
+```bash
+brew install python ffmpeg
+```
 
 **Debian/Ubuntu:**
 ```bash
