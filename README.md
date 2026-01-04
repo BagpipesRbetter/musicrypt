@@ -35,6 +35,7 @@ m3u82m3u [options]
 
 **Options:**
 - `-v, --verbose`: Enable verbose output.
+- `--m4a2flac`: Replace `.m4a` with `.flac` in playlist entries (useful if you've run `alacflac`).
 - `--dir DIR`: Directory to search (default: `~/Music`).
 
 **Dependencies:**
