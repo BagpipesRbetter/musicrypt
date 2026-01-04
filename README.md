@@ -87,5 +87,11 @@ Add the following to your shell configuration file (e.g., `~/.bashrc` or `~/.zsh
 export PATH="$HOME/.local/scripts:$PATH"
 ```
 
+**Option C: Copy scripts to a directory in PATH**
+Alternatively, you can copy the scripts directly to a directory that is already in your PATH:
+```bash
+cp alacflac m3u82m3u ~/.local/bin/
+```
+
 ## License
 [MIT](LICENSE)
