@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+import os
+import subprocess
+import argparse
+import sys
+from pathlib import Path
+
+def get_codec(filepath):
+    """Returns the audio codec of the file using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                'ffprobe', 
+                '-v', 'error', 
+                '-select_streams', 'a:0', 
+                '-show_entries', 'stream=codec_name', 
+                '-of', 'default=noprint_wrappers=1:nokey=1', 
+                str(filepath)
+            ],
+            capture_output=True,
+            text=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return None
+
+def convert_to_flac(filepath, verbose=False):
+    """Converts the file to flac using ffmpeg and removes the original."""
+    output_path = filepath.with_suffix('.flac')
+    
+    # If the output file is the same as the input (e.g. file.flac is actually ALAC)
+    if output_path.resolve() == filepath.resolve():
+        if verbose:
+            print(f"Error: Output path would overwrite input for {filepath}. Skipping.")
+        return False
+
+    if output_path.exists():
+        if verbose:
+            print(f"Found existing FLAC in same directory: {output_path.name}. Removing ALAC source: {filepath.name}")
+        try:
+            os.remove(filepath)
+            return True
+        except OSError as e:
+            print(f"Error removing duplicate {filepath}: {e}", file=sys.stderr)
+            return False
+
+    cmd = ['ffmpeg', '-y', '-i', str(filepath), '-c:a', 'flac', str(output_path)]
+    
+    if not verbose:
+        cmd.extend(['-loglevel', 'error', '-nostats'])
+    else:
+        print(f"Converting: {filepath} -> {output_path.name}")
+    
+    try:
+        subprocess.run(cmd, check=True)
+        # Verify output exists and is not empty before deleting original
+        if output_path.exists() and output_path.stat().st_size > 0:
+            os.remove(filepath)
+            if verbose:
+                print(f"Successfully converted and removed: {filepath.name}")
+            return True
+        else:
+            print(f"Error: Conversion failed or produced empty file for {filepath}", file=sys.stderr)
+            return False
+    except subprocess.CalledProcessError as e:
+        print(f"Error converting {filepath}: {e}", file=sys.stderr)
+        return False
+    except OSError as e:
+        print(f"Error during file operations for {filepath}: {e}", file=sys.stderr)
+        return False
+
+def main():
+    parser = argparse.ArgumentParser(description="Recursively find ALAC files and convert them to FLAC.")
+    parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output")
+    parser.add_argument('--dir', type=str, default=str(Path.home() / "Music"), help="Directory to search (default: ~/Music)")
+    
+    args = parser.parse_args()
+    
+    search_dir = Path(args.dir).expanduser().resolve()
+    
+    if not search_dir.exists():
+        print(f"Error: Directory '{search_dir}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+
+    if args.verbose:
+        print(f"Scanning directory: {search_dir}")
+
+    # Check for ffmpeg/ffprobe availability
+    if not (subprocess.call(['which', 'ffmpeg'], stdout=subprocess.DEVNULL) == 0 and 
+            subprocess.call(['which', 'ffprobe'], stdout=subprocess.DEVNULL) == 0):
+        print("Error: 'ffmpeg' or 'ffprobe' is not installed or not in PATH.", file=sys.stderr)
+        sys.exit(1)
+
+    count = 0
+    for root, dirs, files in os.walk(search_dir):
+        for file in files:
+            filepath = Path(root) / file
+            # Optimization: skip common non-audio files
+            if filepath.suffix.lower() in ['.flac', '.txt', '.jpg', '.png', '.nfo', '.pdf', '.ds_store']:
+                continue
+
+            codec = get_codec(filepath)
+            if codec == 'alac':
+                if convert_to_flac(filepath, args.verbose):
+                    count += 1
+    
+    print(f"Done. Processed {count} files.")
+
+if __name__ == "__main__":
+    main()

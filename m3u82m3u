@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+import os
+import argparse
+import sys
+from pathlib import Path
+
+def convert_playlist(filepath, verbose=False):
+    """
+    Converts .m3u8 playlist to .m3u by removing leading '../' from lines
+    and changing the extension. Removes the original file.
+    """
+    output_path = filepath.with_suffix('.m3u')
+    
+    # Avoid overwriting if they map to the same file (unlikely given extensions differ)
+    if output_path.resolve() == filepath.resolve():
+        if verbose:
+            print(f"Error: Output path same as input for {filepath}. Skipping.")
+        return False
+
+    if output_path.exists():
+        if verbose:
+            print(f"Warning: Output file {output_path.name} already exists. Overwriting.")
+    
+    try:
+        new_lines = []
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for line in f:
+                # Remove the beginning string of "../"
+                # Using slicing if it starts with the string to be precise
+                clean_line = line
+                if clean_line.startswith('../'):
+                    clean_line = clean_line[3:]
+                new_lines.append(clean_line)
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+            
+        if verbose:
+            print(f"Converted: {filepath.name} -> {output_path.name}")
+            
+        # Remove the original .m3u8 file
+        os.remove(filepath)
+        return True
+
+    except Exception as e:
+        print(f"Error processing {filepath}: {e}", file=sys.stderr)
+        return False
+
+def main():
+    parser = argparse.ArgumentParser(description="Recursively find .m3u8 playlists, convert them to .m3u, and remove '../' prefix from paths.")
+    parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output")
+    parser.add_argument('--dir', type=str, default=str(Path.home() / "Music"), help="Directory to search (default: ~/Music)")
+    
+    args = parser.parse_args()
+    
+    search_dir = Path(args.dir).expanduser().resolve()
+    
+    if not search_dir.exists():
+        print(f"Error: Directory '{search_dir}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+
+    if args.verbose:
+        print(f"Scanning directory: {search_dir}")
+
+    count = 0
+    # Walk the directory
+    for root, dirs, files in os.walk(search_dir):
+        for file in files:
+            filepath = Path(root) / file
+            
+            if filepath.suffix.lower() == '.m3u8':
+                if convert_playlist(filepath, args.verbose):
+                    count += 1
+    
+    print(f"Done. Processed {count} files.")
+
+if __name__ == "__main__":
+    main()
