@@ -5,7 +5,7 @@ A collection of lightweight utility scripts for managing a local music library o
 ## Scripts
 
 ### 1. `alacflac`
-Recursively searches a directory for audio files encoded in ALAC (Apple Lossless Audio Codec) and converts them to FLAC (Free Lossless Audio Codec) using `ffmpeg`. It replaces the original file upon successful conversion.
+Recursively searches a directory for audio files encoded in ALAC (Apple Lossless Audio Codec) and converts them to FLAC (Free Lossless Audio Codec) using `ffmpeg`. It replaces the original file upon successful conversion. meant to be used after a apple music download from gamdl.
 
 **Usage:**
 ```bash
@@ -22,7 +22,7 @@ alacflac [options]
 - `ffprobe` (usually part of the ffmpeg package)
 
 ### 2. `m3u82m3u`
-Recursively finds `.m3u8` playlists and converts them to `.m3u` format. It cleans up file paths by removing relative prefix strings (like `../`) to ensure compatibility with players like MPD (Music Player Daemon). It replaces the original `.m3u8` file.
+Recursively finds `.m3u8` playlists and converts them to `.m3u` format. It cleans up file paths by removing relative prefix strings (like `../`) to ensure compatibility with players like MPD (Music Player Daemon). It replaces the original `.m3u8` file. meant to be used after a apple music download from gamdl.
 
 **Usage:**
 ```bash
