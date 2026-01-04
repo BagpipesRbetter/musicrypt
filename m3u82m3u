@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-def convert_playlist(filepath, verbose=False):
+def convert_playlist(filepath, verbose=False, m4a2flac=False):
     """
     Converts .m3u8 playlist to .m3u by removing leading '../' from lines
     and changing the extension. Removes the original file.
@@ -26,10 +26,14 @@ def convert_playlist(filepath, verbose=False):
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
                 # Remove the beginning string of "../"
-                # Using slicing if it starts with the string to be precise
                 clean_line = line
                 if clean_line.startswith('../'):
                     clean_line = clean_line[3:]
+                
+                # Replace .m4a with .flac if requested
+                if m4a2flac:
+                    clean_line = clean_line.replace('.m4a', '.flac')
+                    
                 new_lines.append(clean_line)
         
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -49,6 +53,7 @@ def convert_playlist(filepath, verbose=False):
 def main():
     parser = argparse.ArgumentParser(description="Recursively find .m3u8 playlists, convert them to .m3u, and remove '../' prefix from paths.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output")
+    parser.add_argument('--m4a2flac', action='store_true', help="Replace '.m4a' with '.flac' in playlist entries")
     parser.add_argument('--dir', type=str, default=str(Path.home() / "Music"), help="Directory to search (default: ~/Music)")
     
     args = parser.parse_args()
@@ -69,7 +74,7 @@ def main():
             filepath = Path(root) / file
             
             if filepath.suffix.lower() == '.m3u8':
-                if convert_playlist(filepath, args.verbose):
+                if convert_playlist(filepath, args.verbose, args.m4a2flac):
                     count += 1
     
     print(f"Done. Processed {count} files.")
