@@ -1,98 +1,155 @@
 #!/usr/bin/env python3
-import os
 import argparse
+import os
 import sys
 from pathlib import Path
 
-def process_playlist(filepath, verbose=False, m4a2flac=False):
+
+def build_flac_cache(search_dir):
+    """
+    Builds a dictionary mapping lowercase flac filenames to their
+    relative paths from the search directory root.
+    """
+    cache = {}
+    for root, _, files in os.walk(search_dir):
+        for file in files:
+            if file.lower().endswith(".flac"):
+                full_p = Path(root) / file
+                # Save path relative to search_dir (e.g., 'ABBA/Arrival .../02 Dancing Queen.flac')
+                rel_p = full_p.relative_to(search_dir)
+                cache[file.lower()] = rel_p
+    return cache
+
+
+def process_playlist(filepath, search_dir, flac_cache, verbose=False, m4a2flac=False):
     """
     Processes playlist files (.m3u8 or .m3u).
     1. Removes leading '../' from paths.
-    2. Optionally replaces .m4a with .flac.
-    3. For .m3u8: Converts to .m3u and deletes original.
-    4. For .m3u: Updates in-place if changes are needed.
+    2. Maps entries against the global search directory.
+    3. If .m4a doesn't exist, queries the cache for a matching .flac name globally.
     """
-    is_m3u8 = filepath.suffix.lower() == '.m3u8'
-    output_path = filepath.with_suffix('.m3u')
-    
+    is_m3u8 = filepath.suffix.lower() == ".m3u8"
+    output_path = filepath.with_suffix(".m3u")
+
     try:
         new_lines = []
         changes_made = False
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
+
+        with open(filepath, "r", encoding="utf-8") as f:
             for line in f:
                 original_line = line
-                clean_line = line
-                
-                # Remove the beginning string of "../"
-                if clean_line.startswith('../'):
-                    clean_line = clean_line[3:]
-                
-                # Replace .m4a with .flac if requested
-                if m4a2flac:
-                    clean_line = clean_line.replace('.m4a', '.flac')
-                
-                if clean_line != original_line:
+                stripped_line = line.rstrip("\r\n")
+
+                if not stripped_line or stripped_line.startswith("#"):
+                    new_lines.append(original_line)
+                    continue
+
+                # Check existence using the original path structure first
+                original_full_path = (filepath.parent / stripped_line).resolve()
+
+                # Create the stripped path clean version
+                clean_path = stripped_line
+                while clean_path.startswith("../"):
+                    clean_path = clean_path[3:]
+
+                final_path = clean_path
+
+                # If file doesn't exist on disk at its written path
+                if not original_full_path.exists():
+                    if m4a2flac and stripped_line.lower().endswith(".m4a"):
+                        # Extract just the file name (e.g., '01 great escape.m4a')
+                        m4a_filename = Path(stripped_line).name
+                        flac_target_name = (
+                            Path(m4a_filename).with_suffix(".flac").name.lower()
+                        )
+
+                        # Globally lookup if this flac track exists anywhere in your tree
+                        if flac_target_name in flac_cache:
+                            # Reconstruct its relative path clean from the Music root
+                            matched_rel_path = flac_cache[flac_target_name]
+                            final_path = str(matched_rel_path)
+                            if verbose:
+                                print(
+                                    f"[{filepath.name}] Swapped relocated file to: {final_path}"
+                                )
+                        else:
+                            print(
+                                f"[{filepath.name}] Warning: Global search found no track named: {Path(m4a_filename).with_suffix('.flac').name}"
+                            )
+                    else:
+                        print(
+                            f"[{filepath.name}] Warning: File not found: {clean_path}"
+                        )
+
+                # Reconstruct line layout
+                newline = "\r\n" if original_line.endswith("\r\n") else "\n"
+                new_line = final_path + newline
+
+                if new_line != original_line:
                     changes_made = True
-                    
-                new_lines.append(clean_line)
-        
-        # If it's an m3u8 file, we always write (converting format)
+                new_lines.append(new_line)
+
         if is_m3u8:
             if output_path.exists() and verbose:
-                 print(f"Warning: Output file {output_path.name} already exists. Overwriting.")
-            
-            with open(output_path, 'w', encoding='utf-8') as f:
+                print(f"Warning: Overwriting {output_path.name}")
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
-            
             os.remove(filepath)
-            if verbose:
-                print(f"Converted: {filepath.name} -> {output_path.name}")
             return True
-            
-        # If it's already an m3u file, only write if we changed something
         elif changes_made:
-            with open(filepath, 'w', encoding='utf-8') as f:
+            with open(filepath, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
             if verbose:
                 print(f"Updated: {filepath.name}")
             return True
-            
+
         return False
 
     except Exception as e:
         print(f"Error processing {filepath}: {e}", file=sys.stderr)
         return False
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Recursively process .m3u8 and .m3u playlists: convert .m3u8 to .m3u, clean '../' paths, and optionally replace extensions.")
-    parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output")
-    parser.add_argument('--m4a2flac', action='store_true', help="Replace '.m4a' with '.flac' in playlist entries")
-    parser.add_argument('--dir', type=str, default=str(Path.home() / "Music"), help="Directory to search (default: ~/Music)")
-    
+    parser = argparse.ArgumentParser(
+        description="Recursively process playlists and fix relocated flac files."
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
+    )
+    parser.add_argument(
+        "--m4a2flac",
+        action="store_true",
+        help="Replace '.m4a' with global '.flac' match",
+    )
+    parser.add_argument(
+        "--dir", type=str, default=str(Path.home() / "Music"), help="Music root path"
+    )
+
     args = parser.parse_args()
-    
     search_dir = Path(args.dir).expanduser().resolve()
-    
+
     if not search_dir.exists():
         print(f"Error: Directory '{search_dir}' does not exist.", file=sys.stderr)
         sys.exit(1)
 
+    # Cache your music files ahead of time so we can find them anywhere
     if args.verbose:
-        print(f"Scanning directory: {search_dir}")
+        print("Indexing .flac files...")
+    flac_cache = build_flac_cache(search_dir)
 
     count = 0
-    # Walk the directory
     for root, dirs, files in os.walk(search_dir):
         for file in files:
             filepath = Path(root) / file
-            suffix = filepath.suffix.lower()
-            
-            if suffix in ['.m3u8', '.m3u']:
-                if process_playlist(filepath, args.verbose, args.m4a2flac):
+            if filepath.suffix.lower() in [".m3u8", ".m3u"]:
+                if process_playlist(
+                    filepath, search_dir, flac_cache, args.verbose, args.m4a2flac
+                ):
                     count += 1
-    
+
     print(f"Done. Processed {count} files.")
+
 
 if __name__ == "__main__":
     main()
