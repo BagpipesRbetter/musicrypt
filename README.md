@@ -64,7 +64,7 @@ send2dap --in SRC --out DEST [selection option] [options]
 - `--playlist PLAYLIST`: Path to `.m3u` playlist (mutually exclusive with `--tui`).
 - `--tui`: Open `fzf`-based TUI to select files (mutually exclusive with `--playlist`).
 - `--genre [GENRE]`: Set the genre tag. Pass a string, or omit to use the playlist filename.
-- `--blocksize BLOCKSIZE`: Set FLAC block size for strict hardware compatibility (default: 2048).
+- `--blocksize BLOCKSIZE`: Set FLAC block size for strict hardware compatibility (default: 4096).
 
 **Dependencies:**
 - Python 3
