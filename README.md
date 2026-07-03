@@ -1,3 +1,6 @@
+> [!NOTE]
+> All of the scripts in this repository are written by a human with the help of an LLM.
+
 # musicrypt
 
 A collection of lightweight utility scripts for managing a local music library on Linux and macOS. These tools are designed to work well with [gamdl](https://github.com/glomatico/gamdl) downloads.
@@ -45,6 +48,29 @@ m3u82m3u [options]
 **Dependencies:**
 - Python 3
 
+### 3. `send2dap`
+Syncs, converts, and formats music files from a source directory for strict hardware audio players (DAPs). It handles FAT32/exFAT filename sanitization, playlist parsing with path resolution fallback, and optional metadata tag modifications.
+
+Designed to sync music libraries to portable hardware audio players.
+
+**Usage:**
+```bash
+send2dap --in SRC --out DEST [selection option] [options]
+```
+
+**Options:**
+- `--in SRC`: Source music directory (required).
+- `--out DEST`: Output destination (mounted drive/dir) (required).
+- `--playlist PLAYLIST`: Path to `.m3u` playlist (mutually exclusive with `--tui`).
+- `--tui`: Open `fzf`-based TUI to select files (mutually exclusive with `--playlist`).
+- `--genre [GENRE]`: Set the genre tag. Pass a string, or omit to use the playlist filename.
+- `--blocksize BLOCKSIZE`: Set FLAC block size for strict hardware compatibility (default: 2048).
+
+**Dependencies:**
+- Python 3
+- `ffmpeg`
+- `fzf` (required for `--tui` option)
+
 ## Installation
 
 ### 1. Clone the repository
@@ -56,27 +82,27 @@ cd ~/.local/scripts
 ```
 
 ### 2. Install Dependencies
-Ensure you have Python 3 and FFmpeg installed.
+Ensure you have Python 3, FFmpeg, and optionally fzf installed.
 
 **macOS (via Homebrew):**
 ```bash
-brew install python ffmpeg
+brew install python ffmpeg fzf
 ```
 
 **Debian/Ubuntu:**
 ```bash
 sudo apt update
-sudo apt install python3 ffmpeg
+sudo apt install python3 ffmpeg fzf
 ```
 
 **Arch Linux:**
 ```bash
-sudo pacman -S python ffmpeg
+sudo pacman -S python ffmpeg fzf
 ```
 
 **Fedora:**
 ```bash
-sudo dnf install python3 ffmpeg
+sudo dnf install python3 ffmpeg fzf
 ```
 
 ### 3. Add to PATH
@@ -87,6 +113,7 @@ To run these scripts from anywhere, add the script directory to your PATH or cre
 mkdir -p ~/.local/bin
 ln -s ~/.local/scripts/alacflac ~/.local/bin/alacflac
 ln -s ~/.local/scripts/m3u82m3u ~/.local/bin/m3u82m3u
+ln -s ~/.local/scripts/send2dap ~/.local/bin/send2dap
 ```
 *Ensure `~/.local/bin` is in your `$PATH`.*
 
@@ -99,7 +126,7 @@ export PATH="$HOME/.local/scripts:$PATH"
 **Option C: Copy scripts to a directory in PATH**
 Alternatively, you can copy the scripts directly to a directory that is already in your PATH:
 ```bash
-cp alacflac m3u82m3u ~/.local/bin/
+cp alacflac m3u82m3u send2dap ~/.local/bin/
 ```
 
 ## License
