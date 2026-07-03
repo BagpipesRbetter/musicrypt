@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+import argparse
+import shutil
+import subprocess
+from pathlib import Path
+
+
+def sanitize_fat32(name):
+    """Replaces characters that are illegal on FAT32/exFAT filesystems."""
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        name = name.replace(char, "_")
+    return name
+
+
+def get_files_from_tui(src_dir):
+    """Uses fzf for a multi-select TUI, filtered to specific audio formats."""
+    try:
+        find_cmd = f"find '{src_dir}' -type f \\( -iname '*.flac' -o -iname '*.m4a' \\)"
+        cmd = f"{find_cmd} | fzf -m --prompt='Select Music > '"
+
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            print("TUI selection cancelled or no files selected.")
+            return []
+        return [line for line in result.stdout.split("\n") if line]
+    except FileNotFoundError:
+        print("Error: 'fzf' is not installed or not in PATH.")
+        return []
+
+
+def get_files_from_m3u(m3u_path, src_dir):
+    """Parses M3U files and strictly resolves paths with a fallback mechanism."""
+    files = []
+    m3u_dir = Path(m3u_path).resolve().parent
+
+    with open(m3u_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                # 1. Try relative to the M3U's exact directory
+                path_m3u = (m3u_dir / line).resolve()
+
+                # 2. Try one level higher (fixes missing ../ in exported playlists)
+                path_one_up = (m3u_dir.parent / line).resolve()
+
+                # 3. Try anchoring it directly to the user's --in directory
+                path_src = (src_dir / line).resolve()
+
+                if path_m3u.is_file():
+                    files.append(str(path_m3u))
+                elif path_one_up.is_file():
+                    files.append(str(path_one_up))
+                elif path_src.is_file():
+                    files.append(str(path_src))
+                else:
+                    # If none exist, default to the 'one level up' path so the
+                    # missing file warning in main() accurately shows what failed
+                    files.append(str(path_one_up))
+    return files
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Sync, convert, and format music for strict audio players."
+    )
+
+    # Input / Output Directories
+    parser.add_argument(
+        "--in", dest="src", type=str, required=True, help="Source music directory"
+    )
+    parser.add_argument(
+        "--out",
+        dest="dest",
+        type=str,
+        required=True,
+        help="Output destination (mounted drive/dir)",
+    )
+
+    # Selection Method
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--playlist", type=str, help="Path to .m3u playlist")
+    group.add_argument(
+        "--tui", action="store_true", help="Open fzf-based TUI to select files"
+    )
+
+    # Metadata & Encoding Modifications
+    parser.add_argument(
+        "--genre",
+        nargs="?",
+        const="__USE_PLAYLIST__",
+        help="Set the genre tag. Pass a string, or omit to use the playlist filename.",
+    )
+    parser.add_argument(
+        "--blocksize",
+        type=int,
+        default=2048,
+        help="Set FLAC block size for strict hardware compatibility (default: 2048).",
+    )
+
+    args = parser.parse_args()
+
+    src_dir = Path(args.src).resolve()
+    dest_dir = Path(args.dest).resolve()
+    tmp_dir = dest_dir / ".dap_sync_tmp"
+
+    target_genre = None
+    if args.genre:
+        if args.genre == "__USE_PLAYLIST__":
+            if args.playlist:
+                target_genre = Path(args.playlist).stem
+            else:
+                print(
+                    "Warning: '--genre' without a string requires '--playlist'. Ignoring genre modification."
+                )
+        else:
+            target_genre = args.genre
+
+    # 1. Gather files (Passing src_dir to the m3u parser now)
+    if args.tui:
+        files_to_sync = get_files_from_tui(src_dir)
+    else:
+        files_to_sync = get_files_from_m3u(args.playlist, src_dir)
+
+    if not files_to_sync:
+        print("No files to process. Exiting.")
+        return
+
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        for file_path_str in files_to_sync:
+            file_path = Path(file_path_str).resolve()
+            if not file_path.is_file():
+                print(f"Skipping missing file: {file_path}")
+                continue
+
+            try:
+                rel_path = file_path.relative_to(src_dir)
+            except ValueError:
+                rel_path = Path(file_path.name)
+
+            clean_parts = [sanitize_fat32(part) for part in rel_path.parts]
+            clean_rel_path = Path(*clean_parts)
+
+            ext = file_path.suffix.lower()
+            out_ext = ".m4a" if ext == ".m4a" else ".flac"
+            rel_out_path = clean_rel_path.with_suffix(out_ext)
+
+            tmp_out_file = tmp_dir / rel_out_path
+            final_out_file = dest_dir / rel_out_path
+
+            tmp_out_file.parent.mkdir(parents=True, exist_ok=True)
+
+            print(
+                f"Processing: {file_path.name} -> {out_ext} (Block size: {args.blocksize if out_ext == '.flac' else 'Native'})"
+            )
+
+            audio_codec = "copy" if ext == ".m4a" else "flac"
+
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                str(file_path),
+                "-map",
+                "0:a",
+                "-map",
+                "0:v?",
+                "-c:a",
+                audio_codec,
+                "-c:v",
+                "mjpeg",
+                "-vf",
+                "scale=1000:1000",
+                "-pix_fmt",
+                "yuvj420p",
+                "-id3v2_version",
+                "3",
+            ]
+
+            if audio_codec == "flac":
+                cmd.extend(["-frame_size", str(args.blocksize)])
+
+            if target_genre:
+                cmd.extend(["-metadata", f"genre={target_genre}"])
+
+            cmd.append(str(tmp_out_file))
+
+            subprocess.run(cmd, check=True)
+
+            final_out_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(tmp_out_file), str(final_out_file))
+
+    finally:
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        print("\nSync completed. Temporary workspace removed.")
+
+
+if __name__ == "__main__":
+    main()
