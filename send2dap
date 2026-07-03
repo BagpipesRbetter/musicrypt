@@ -94,8 +94,8 @@ def main():
     parser.add_argument(
         "--blocksize",
         type=int,
-        default=2048,
-        help="Set FLAC block size for strict hardware compatibility (default: 2048).",
+        default=4096,
+        help="Set FLAC block size for strict hardware compatibility (default: 4096).",
     )
 
     args = parser.parse_args()
